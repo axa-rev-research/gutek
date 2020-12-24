@@ -26,16 +26,6 @@ interpreter = partial(gutek.gutek_interpreter, binary=False, n_samples=10, batch
 # +----------------------------+
 
 
-def display_results(df):
-    df = df.round(decimals=2)
-    print('Results for {}-based classifier.'.format(df.interpreter[0]))
-    means = df[['mean_precision', 'mean_recall', 'mean_iou']].astype(str)
-    means.columns = ['precision', 'recall', 'iou']
-    stds = df[['std_precision', 'std_recall', 'std_iou']].astype(str)
-    stds.columns = ['precision', 'recall', 'iou']
-    print(means + '(' + stds + ')')
-
-
 def run(dataset, device):
     try:
         interpreter
@@ -63,43 +53,99 @@ def run(dataset, device):
         print('Done!')
 
 
-def analyze(dataset):
-    experiment = qa_experimenters.QAExperimenter(None, None, None)
-    # analyze Classification
-    experiment.load(path='results_quackie/results_Classification_' + dataset)
-    display_results(experiment.analyze('Classification'))
-    print('\n\n')
-    # analyze QA
-    experiment.load(path='results_QA_' + dataset)
-    display_results(experiment.analyze('QA'))
+def analyze(args):
+    E = qa_experimenters.QAExperimenter(None, None, None)
+    df = df = pd.DataFrame(
+        columns=[
+            "model",
+            "interpreter",
+            "mean_iou",
+            "mean_hpd",
+            "mean_snr",
+            "std_iou",
+            "std_hpd",
+            "std_snr",
+            "fails",
+            "no_snr",
+            "info",
+            "dataset",
+        ]
+    )
+    for folder in os.listdir("results_quackie"):
+        E.load("results_quackie/results_QA_SQuAD")
+        res = E.analyze(interpreter)[
+            [
+                "mean_iou",
+                "mean_hpd",
+                "mean_snr",
+                "std_iou",
+                "std_hpd",
+                "std_snr",
+                "fails",
+                "no_snr",
+            ]
+        ]
+        res["model"] = folder.split("_")[1]
+        res["dataset"] = folder.split("_")[2]
+        res["interpreter"] = args.name
+        res["info"] = args.info
+        df = df.append(res)
+    df = df[
+        ["dataset", "model", "interpreter", "info", "mean_iou", "mean_hpd", "mean_snr"]
+    ]
+    df.columns = ["dataset", "classifier", "method", "info", "IoU", "HPD", "SNR"]
+    print(df)
+    df.to_json("results.json", orient="records")
+    print("Saved results in results.json")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Parameters of the experiment')
-    parser.add_argument('--dataset',
-                        type=str,
-                        required=True,
-                        choices=['SQuAD', 'NEW_WIKI', 'NYT', 'Reddit', 'Amazon'],
-                        help='Dataset to use, can be one of [\'SQuAD\', \'NEW_WIKI\', \'NYT\', \'Reddit\', \'Amazon\'], SQuAD for SQuAD dataset, others for SQuADShifts')
-    parser.add_argument('--run', dest='run', action='store_true',
-                        help='Flag if Experiment should be run')
-    parser.add_argument('--analyze', dest='analyze', action='store_true',
-                        help='Flag if Experiment should be analyzed')
-    parser.add_argument('--no_cuda', dest='no_cuda', action='store_true',
-                        help='Flag if force cpu usage')
+    parser = argparse.ArgumentParser(description="Parameters of the experiment")
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        choices=["SQuAD", "NEW_WIKI", "NYT", "Reddit", "Amazon"],
+        help="Dataset to use, can be one of ['SQuAD', 'NEW_WIKI', 'NYT', 'Reddit', 'Amazon'], SQuAD for SQuAD dataset, others for SQuADShifts",
+    )
+    parser.add_argument(
+        "--run",
+        dest="run",
+        action="store_true",
+        help="Flag if Experiment should be run",
+    )
+    parser.add_argument(
+        "--analyze",
+        dest="analyze",
+        action="store_true",
+        help="Flag if Experiment should be analyzed (all results will be analyzed).",
+    )
+    parser.add_argument(
+        "--name",
+        type=str,
+        default="Custom",
+        help="Name of the interpreter to use in results",
+    )
+    parser.add_argument(
+        "--info", type=str, default="Custom", help="Content for the 'Info' column",
+    )
+    parser.add_argument(
+        "--no_cuda", dest="no_cuda", action="store_true", help="Flag if force cpu usage"
+    )
     args = parser.parse_args()
-
     if not (args.run or args.analyze):
-        print('Please run or analyze')
+        print("Please run or analyze")
 
     else:
-        device = 'cuda' if torch.cuda.is_available() and not args.no_cuda else 'cpu'
-        print('Using device {}'.format(device))
+        device = "cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu"
+        print("Using device {}".format(device))
         if args.run:
+            assert args.dataset, "Dataset required for running"
             run(args.dataset, device)
         if args.analyze:
-            print('\n')
-            analyze(args.dataset)
+            print("\nAnalyzing for all datasets..")
+            analyze(args)
 
-        print('\n\nThank you for choosing QUACKIE. You can submit your results via git pull request, more info here: ')
-        print('Todo: Website')
+        print(
+            "\n\nThank you for choosing QUACKIE. You can submit your results via git pull request, more info here: "
+        )
+        print("https://github.com/axa-rev-research/quackie/tree/gh-pages")
